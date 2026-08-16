@@ -1,0 +1,307 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   深色科幻主题（Sci-Fi Minimal）
+   ============================================================ */
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #dbe6f7;
+  background-color: #070b14;
+  /* 深邃星空底 + 顶部青色光晕 */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 229, 255, 0.08), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(59, 130, 246, 0.06), transparent 60%),
+    linear-gradient(180deg, #0a101f 0%, #070b14 100%);
+  background-attachment: fixed;
+}
+
+/* ---------- Element Plus 深色变量覆盖（科幻色板） ---------- */
+html.dark {
+  --el-color-primary: #00d4ff;
+  --el-color-primary-light-3: #33ddff;
+  --el-color-primary-light-5: #66e6ff;
+  --el-color-primary-light-7: #99eeff;
+  --el-color-primary-light-8: #b3f3ff;
+  --el-color-primary-light-9: #e6fbff;
+  --el-color-primary-dark-2: #00aacc;
+
+  --el-color-success: #00e5a0;
+  --el-color-warning: #ffb454;
+  --el-color-danger: #ff5c7a;
+  --el-color-error: #ff5c7a;
+  --el-color-info: #64748b;
+
+  --el-bg-color: #0d1526;
+  --el-bg-color-page: #070b14;
+  --el-bg-color-overlay: #111b30;
+
+  --el-text-color-primary: #e8f1ff;
+  --el-text-color-regular: #a9bad6;
+  --el-text-color-secondary: #7d90b5;
+  --el-text-color-placeholder: #4d5f82;
+  --el-text-color-disabled: #3a4a6a;
+
+  --el-border-color: rgba(0, 212, 255, 0.22);
+  --el-border-color-light: rgba(0, 212, 255, 0.16);
+  --el-border-color-lighter: rgba(0, 212, 255, 0.12);
+  --el-border-color-extra-light: rgba(0, 212, 255, 0.08);
+  --el-border-color-hover: rgba(0, 212, 255, 0.4);
+  --el-border-color-dark: rgba(0, 212, 255, 0.3);
+
+  --el-fill-color: rgba(0, 212, 255, 0.08);
+  --el-fill-color-light: rgba(0, 212, 255, 0.06);
+  --el-fill-color-lighter: rgba(0, 212, 255, 0.04);
+  --el-fill-color-extra-light: rgba(0, 212, 255, 0.03);
+  --el-fill-color-blank: #0d1526;
+  --el-fill-color-dark: rgba(0, 212, 255, 0.12);
+
+  --el-mask-color: rgba(4, 8, 16, 0.7);
+  --el-box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --el-box-shadow-light: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --el-box-shadow-lighter: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  --el-disabled-bg-color: rgba(255, 255, 255, 0.04);
+  --el-disabled-text-color: #3a4a6a;
+  --el-disabled-border-color: rgba(0, 212, 255, 0.1);
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.45);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 通用卡片（科幻风格） ---------- */
+.el-card {
+  --el-card-bg-color: rgba(13, 21, 38, 0.75);
+  background: var(--el-card-bg-color);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.el-card:hover {
+  border-color: rgba(0, 212, 255, 0.3);
+  box-shadow: 0 4px 24px rgba(0, 212, 255, 0.08), 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+.el-card__header {
+  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  padding: 14px 18px;
+}
+
+/* ---------- 表格 ---------- */
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(0, 212, 255, 0.05);
+  --el-table-header-text-color: #7d90b5;
+  --el-table-row-hover-bg-color: rgba(0, 212, 255, 0.06);
+  --el-table-border-color: rgba(0, 212, 255, 0.08);
+  --el-table-text-color: #c9d8ee;
+  background: transparent;
+  font-size: 13px;
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.el-table .el-table__inner-wrapper::before {
+  display: none;
+}
+
+/* ---------- 输入框 / 选择器 ---------- */
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  background-color: rgba(10, 17, 32, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.14) inset !important;
+  transition: box-shadow 0.2s ease;
+}
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.35) inset !important;
+}
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.6) inset, 0 0 12px rgba(0, 212, 255, 0.15) !important;
+}
+
+/* ---------- 按钮（主按钮霓虹发光） ---------- */
+.el-button--primary {
+  --el-button-bg-color: #00d4ff;
+  --el-button-border-color: #00d4ff;
+  --el-button-text-color: #04121c;
+  --el-button-hover-bg-color: #3ddfff;
+  --el-button-hover-border-color: #3ddfff;
+  --el-button-active-bg-color: #00b8dd;
+  --el-button-active-border-color: #00b8dd;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 14px rgba(0, 212, 255, 0.35);
+}
+.el-button--primary:hover {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.55);
+}
+
+/* ---------- 分页 ---------- */
+.el-pagination.is-background .el-pager li {
+  background: rgba(0, 212, 255, 0.06);
+  color: #a9bad6;
+}
+.el-pagination.is-background .el-pager li.is-active {
+  background: #00d4ff;
+  color: #04121c;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+/* ---------- 标签 ---------- */
+.el-tag {
+  border-radius: 4px;
+}
+
+/* ---------- 弹窗 / 下拉 ---------- */
+.el-popper.is-light,
+.el-dropdown__popper.el-popper {
+  background: #111b30;
+  border-color: rgba(0, 212, 255, 0.2);
+}
+.el-dropdown-menu {
+  background: #111b30;
+}
+.el-dropdown-menu__item:not(.is-disabled):hover {
+  background: rgba(0, 212, 255, 0.1);
+  color: #00d4ff;
+}
+.el-message-box {
+  background: #111b30;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+}
+.el-message {
+  background: #111b30;
+  border-color: rgba(0, 212, 255, 0.25);
+}
+
+/* ---------- Markdown 笔记样式 ---------- */
+.md-body {
+  line-height: 1.7;
+  font-size: 14px;
+  color: #c9d8ee;
+  word-break: break-word;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  color: #e8f1ff;
+}
+.md-body h1 {
+  font-size: 20px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+  padding-bottom: 6px;
+}
+.md-body h2 {
+  font-size: 17px;
+}
+.md-body h3 {
+  font-size: 15px;
+}
+.md-body p {
+  margin: 6px 0;
+}
+.md-body ul,
+.md-body ol {
+  padding-left: 22px;
+  margin: 6px 0;
+}
+.md-body ul {
+  list-style: disc;
+}
+.md-body ol {
+  list-style: decimal;
+}
+.md-body li {
+  margin: 2px 0;
+}
+.md-body code {
+  background: rgba(0, 212, 255, 0.12);
+  color: #4ee3ff;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+}
+.md-body pre {
+  background: #0a1120;
+  color: #a8c5e8;
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.md-body pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.md-body blockquote {
+  border-left: 3px solid #00d4ff;
+  background: rgba(0, 212, 255, 0.07);
+  padding: 6px 12px;
+  margin: 8px 0;
+  color: #a9bad6;
+  border-radius: 0 4px 4px 0;
+}
+.md-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  padding: 6px 10px;
+}
+.md-body th {
+  background: rgba(0, 212, 255, 0.06);
+}
+.md-body a {
+  color: #00d4ff;
+  text-decoration: none;
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid rgba(0, 212, 255, 0.15);
+  margin: 12px 0;
+}
+.md-body input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: #00d4ff;
+}

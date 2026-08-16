@@ -1,0 +1,40 @@
+appId: com.projectpilot.app
+productName: ProjectPilot
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "**/*.node"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: 本地项目管理系统
+portable:
+  artifactName: ${productName}-${version}-portable-${arch}.${ext}
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  artifactName: ${productName}-${version}-${arch}.${ext}
+dmg:
+  title: ${productName} ${version}
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+npmRebuild: true
