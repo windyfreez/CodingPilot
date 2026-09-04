@@ -3,9 +3,30 @@
  */
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
+import { appendFileSync, mkdirSync } from 'fs'
 import { registerIpc, loadSettings, runScan, isScanning } from './ipc'
 import { setServiceLogEmitter, cleanupServices } from './services/system'
 import { getDb } from './db'
+
+// ---------- 崩溃/错误日志（写入 userData/logs/app.log，便于复现主进程级闪退） ----------
+function writeLog(line: string): void {
+  try {
+    const dir = join(app.getPath('userData'), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'app.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    // 日志不可用时静默
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  writeLog(`[uncaughtException] ${err?.stack ?? String(err)}`)
+  console.error('[uncaughtException]', err)
+})
+process.on('unhandledRejection', (reason) => {
+  writeLog(`[unhandledRejection] ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`)
+  console.error('[unhandledRejection]', reason)
+})
 
 let mainWindow: BrowserWindow | null = null
 
@@ -16,7 +37,7 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: '本地项目管理系统',
+    title: 'CodingPilot',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
@@ -35,18 +56,21 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // 开发期转发渲染进程控制台与错误，便于排查
-  if (!app.isPackaged) {
-    mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-      if (level >= 2) console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`)
-    })
-    mainWindow.webContents.on('render-process-gone', (_e, details) => {
-      console.log(`[renderer-gone] ${details.reason} ${details.exitCode}`)
-    })
-    mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
-      console.log(`[renderer-fail-load] ${code} ${desc}`)
-    })
-  }
+  // 渲染进程/加载错误也写入日志（开发期同时转发到主进程控制台）
+  mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level >= 2) writeLog(`[renderer:${level}] ${message} (${sourceId}:${line})`)
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    writeLog(`[renderer-gone] reason=${details.reason} exitCode=${details.exitCode}`)
+    console.log(`[renderer-gone] ${details.reason} ${details.exitCode}`)
+  })
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+    writeLog(`[renderer-fail-load] ${code} ${desc}`)
+    console.log(`[renderer-fail-load] ${code} ${desc}`)
+  })
+  mainWindow.webContents.on('preload-error', (_e, path, err) => {
+    writeLog(`[preload-error] ${path}: ${err?.message ?? String(err)}`)
+  })
 
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

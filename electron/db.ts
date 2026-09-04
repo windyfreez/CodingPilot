@@ -110,6 +110,85 @@ function migrate(d: Database.Database): void {
   if (!gitCacheCols.some((c) => c.name === 'commit_synced_at')) {
     d.exec('ALTER TABLE git_cache ADD COLUMN commit_synced_at INTEGER')
   }
+
+  // ---------- Agent 用量与工作量统计（数据中心） ----------
+  // agent_sessions：外部 AI 工具的会话（主会话；子代理/子会话归入 parent_external_id 指向主会话）
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tool TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      parent_external_id TEXT,
+      title TEXT,
+      cwd TEXT,
+      project_id INTEGER,
+      started_at INTEGER,
+      ended_at INTEGER,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE(tool, external_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(project_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_started ON agent_sessions(started_at);
+
+    -- agent_usage：每次模型调用的 token 用量与成本（按条入库，展示时聚合）
+    CREATE TABLE IF NOT EXISTS agent_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      model TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+      cost REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD'
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_recorded ON agent_usage(recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_session ON agent_usage(session_id);
+
+    -- agent_edits：Agent 对文件的写操作（行级归属统计的原始依据）
+    CREATE TABLE IF NOT EXISTS agent_edits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      ts INTEGER NOT NULL,
+      file_path TEXT NOT NULL,
+      rel_path TEXT,
+      project_id INTEGER,
+      added_lines INTEGER NOT NULL DEFAULT 0,
+      deleted_lines INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_edits_ts ON agent_edits(ts);
+    CREATE INDEX IF NOT EXISTS idx_agent_edits_project ON agent_edits(project_id);
+
+    -- worklog_git：按 项目×日期×作者 聚合的 git 工作量（numstat）
+    CREATE TABLE IF NOT EXISTS worklog_git (
+      project_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      author TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      commits INTEGER NOT NULL DEFAULT 0,
+      files_changed INTEGER NOT NULL DEFAULT 0,
+      insertions INTEGER NOT NULL DEFAULT 0,
+      deletions INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (project_id, date, author, email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_worklog_git_date ON worklog_git(date);
+
+    -- worklog_manual：手动补录/校正条目（self_lines=自己写行数修正、interface=接口数、custom 等）
+    CREATE TABLE IF NOT EXISTS worklog_manual (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      project_id INTEGER,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      value INTEGER NOT NULL DEFAULT 1,
+      note TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_worklog_manual_date ON worklog_manual(date);
+  `)
 }
 
 // ---------- 配置读写 ----------
@@ -293,6 +372,9 @@ export function setProjectActive(projectId: number, commits30d: number, lastOpen
 export function removeProject(projectId: number): void {
   const d = getDb()
   const tx = d.transaction(() => {
+    d.prepare('DELETE FROM worklog_git WHERE project_id = ?').run(projectId)
+    d.prepare('DELETE FROM worklog_manual WHERE project_id = ?').run(projectId)
+    d.prepare('UPDATE agent_sessions SET project_id = NULL WHERE project_id = ?').run(projectId)
     d.prepare('DELETE FROM project_tags WHERE project_id = ?').run(projectId)
     d.prepare('DELETE FROM commit_daily WHERE project_id = ?').run(projectId)
     d.prepare('DELETE FROM git_cache WHERE project_id = ?').run(projectId)
@@ -478,4 +560,281 @@ export function listScanLogs(limit = 20): {
     new_projects: number
     error: string | null
   }[]
+}
+
+// ---------- Agent 用量采集（agent_sessions / agent_usage / agent_edits） ----------
+export interface AgentSessionRow {
+  id: number
+  tool: string
+  external_id: string
+  parent_external_id: string | null
+  title: string | null
+  cwd: string | null
+  project_id: number | null
+  started_at: number | null
+  ended_at: number | null
+  message_count: number
+  created_at: number
+}
+
+export function getAgentSessionByExternal(tool: string, externalId: string): AgentSessionRow | undefined {
+  return getDb().prepare('SELECT * FROM agent_sessions WHERE tool = ? AND external_id = ?').get(tool, externalId) as
+    | AgentSessionRow
+    | undefined
+}
+
+export function upsertAgentSession(
+  tool: string,
+  externalId: string,
+  meta: {
+    parentExternalId?: string | null
+    title?: string | null
+    cwd?: string | null
+    projectId?: number | null
+    startedAt?: number | null
+    endedAt?: number | null
+    messageCount?: number
+  }
+): { id: number; created: boolean } {
+  const d = getDb()
+  const now = Date.now()
+  const existing = getAgentSessionByExternal(tool, externalId)
+  if (existing) {
+    d.prepare(
+      `UPDATE agent_sessions SET parent_external_id = COALESCE(?, parent_external_id),
+       title = COALESCE(?, title), cwd = COALESCE(?, cwd), project_id = COALESCE(?, project_id),
+       started_at = COALESCE(?, started_at), ended_at = ?, message_count = MAX(message_count, ?)
+       WHERE id = ?`
+    ).run(
+      meta.parentExternalId ?? null,
+      meta.title ?? null,
+      meta.cwd ?? null,
+      meta.projectId ?? null,
+      meta.startedAt ?? null,
+      meta.endedAt ?? existing.ended_at,
+      meta.messageCount ?? 0,
+      existing.id
+    )
+    return { id: existing.id, created: false }
+  }
+  const info = d
+    .prepare(
+      `INSERT INTO agent_sessions
+       (tool, external_id, parent_external_id, title, cwd, project_id, started_at, ended_at, message_count, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      tool,
+      externalId,
+      meta.parentExternalId ?? null,
+      meta.title ?? null,
+      meta.cwd ?? null,
+      meta.projectId ?? null,
+      meta.startedAt ?? null,
+      meta.endedAt ?? null,
+      meta.messageCount ?? 0,
+      now
+    )
+  return { id: Number(info.lastInsertRowid), created: true }
+}
+
+export function insertAgentUsage(
+  sessionId: number,
+  u: {
+    recordedAt: number
+    model?: string | null
+    inputTokens?: number
+    outputTokens?: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+    cost?: number
+    currency?: string
+  }
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO agent_usage
+       (session_id, recorded_at, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost, currency)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      sessionId,
+      u.recordedAt,
+      u.model ?? null,
+      u.inputTokens ?? 0,
+      u.outputTokens ?? 0,
+      u.cacheReadTokens ?? 0,
+      u.cacheWriteTokens ?? 0,
+      u.reasoningTokens ?? 0,
+      u.cost ?? 0,
+      u.currency ?? 'USD'
+    )
+}
+
+export function insertAgentEdit(
+  sessionId: number,
+  e: { ts: number; filePath: string; relPath?: string | null; projectId?: number | null; addedLines: number; deletedLines: number }
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO agent_edits (session_id, ts, file_path, rel_path, project_id, added_lines, deleted_lines)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(sessionId, e.ts, e.filePath, e.relPath ?? null, e.projectId ?? null, e.addedLines, e.deletedLines)
+}
+
+/** 会话归属项目：将 agent_sessions.cwd 与纳管项目路径做前缀匹配（兼容 slug 形式，如 D--Codespace-...） */
+export function linkAgentSessionsToProjects(): number {
+  const d = getDb()
+  const sessions = d
+    .prepare('SELECT id, cwd FROM agent_sessions WHERE project_id IS NULL AND cwd IS NOT NULL')
+    .all() as { id: number; cwd: string }[]
+  if (sessions.length === 0) return 0
+  const projects = d.prepare('SELECT id, path FROM projects WHERE is_existing = 1').all() as { id: number; path: string }[]
+  const norm = (p: string): string => p.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
+  const slugOf = (p: string): string => p.replace(/\\/g, '-').replace(/:/g, '-').toLowerCase()
+  const update = d.prepare('UPDATE agent_sessions SET project_id = ? WHERE id = ?')
+  let linked = 0
+  for (const s of sessions) {
+    const sc = norm(s.cwd)
+    const isSlug = !s.cwd.includes('\\') && !s.cwd.includes('/') && !s.cwd.includes(':')
+    let best: { id: number; len: number } | null = null
+    for (const p of projects) {
+      if (isSlug) {
+        if (slugOf(p.path) === s.cwd.toLowerCase() && (!best || p.path.length > best.len)) {
+          best = { id: p.id, len: p.path.length }
+        }
+      } else {
+        const pc = norm(p.path)
+        if (sc === pc || sc.startsWith(pc + '/')) {
+          if (!best || pc.length > best.len) best = { id: p.id, len: pc.length }
+        }
+      }
+    }
+    if (best) {
+      update.run(best.id, s.id)
+      linked++
+    }
+  }
+  // 同步会话改动/用量记录的 project_id（用于按项目聚合）
+  d.exec(
+    `UPDATE agent_edits SET project_id = (SELECT s.project_id FROM agent_sessions s WHERE s.id = agent_edits.session_id)
+     WHERE project_id IS NULL`
+  )
+  return linked
+}
+
+/** 移除项目时清掉相关工作量数据，并解除会话归属 */
+export function clearProjectUsage(projectId: number): void {
+  const d = getDb()
+  d.prepare('DELETE FROM worklog_git WHERE project_id = ?').run(projectId)
+  d.prepare('DELETE FROM worklog_manual WHERE project_id = ?').run(projectId)
+  d.prepare('UPDATE agent_sessions SET project_id = NULL WHERE project_id = ?').run(projectId)
+}
+
+// ---------- 当日工作量（worklog_git / worklog_manual） ----------
+export interface WorklogGitRow {
+  project_id: number
+  date: string
+  author: string
+  email: string
+  commits: number
+  files_changed: number
+  insertions: number
+  deletions: number
+}
+
+export function replaceWorklogGit(projectId: number, rows: WorklogGitRow[]): void {
+  const d = getDb()
+  const tx = d.transaction(() => {
+    d.prepare('DELETE FROM worklog_git WHERE project_id = ?').run(projectId)
+    const ins = d.prepare(
+      `INSERT OR REPLACE INTO worklog_git (project_id, date, author, email, commits, files_changed, insertions, deletions)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    for (const r of rows) ins.run(projectId, r.date, r.author, r.email, r.commits, r.files_changed, r.insertions, r.deletions)
+  })
+  tx()
+}
+
+/** 按日期聚合查询工作量（可只查某天；date 为 YYYY-MM-DD） */
+export function queryWorklogDaily(
+  date: string
+): (WorklogGitRow & { project_name: string; project_path: string })[] {
+  return getDb()
+    .prepare(
+      `SELECT w.*, p.name AS project_name, p.path AS project_path FROM worklog_git w
+       JOIN projects p ON p.id = w.project_id
+       WHERE w.date = ? ORDER BY w.insertions DESC`
+    )
+    .all(date) as (WorklogGitRow & { project_name: string; project_path: string })[]
+}
+
+export function queryWorklogRange(startDate: string, endDate: string): (WorklogGitRow & { project_name: string })[] {
+  return getDb()
+    .prepare(
+      `SELECT w.*, p.name AS project_name FROM worklog_git w
+       JOIN projects p ON p.id = w.project_id
+       WHERE w.date >= ? AND w.date <= ?`
+    )
+    .all(startDate, endDate) as (WorklogGitRow & { project_name: string })[]
+}
+
+export interface WorklogManualRow {
+  id: number
+  date: string
+  project_id: number | null
+  category: string
+  title: string
+  value: number
+  note: string | null
+  created_at: number
+}
+
+export function addWorklogManual(entry: {
+  date: string
+  projectId?: number | null
+  category: string
+  title?: string
+  value?: number
+  note?: string | null
+}): number {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO worklog_manual (date, project_id, category, title, value, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      entry.date,
+      entry.projectId ?? null,
+      entry.category,
+      entry.title ?? '',
+      entry.value ?? 1,
+      entry.note ?? null,
+      Date.now()
+    )
+  return Number(info.lastInsertRowid)
+}
+
+export function listWorklogManual(date: string): WorklogManualRow[] {
+  return getDb()
+    .prepare('SELECT * FROM worklog_manual WHERE date = ? ORDER BY id')
+    .all(date) as WorklogManualRow[]
+}
+
+export function deleteWorklogManual(id: number): void {
+  getDb().prepare('DELETE FROM worklog_manual WHERE id = ?').run(id)
+}
+
+export function upsertSelfLines(date: string, projectId: number | null, value: number): void {
+  const d = getDb()
+  const existing = d
+    .prepare('SELECT id FROM worklog_manual WHERE date = ? AND project_id IS ? AND category = ?')
+    .all(date, projectId, 'self_lines') as { id: number }[]
+  if (existing.length > 0) {
+    d.prepare('UPDATE worklog_manual SET value = ? WHERE id = ?').run(value, existing[0].id)
+  } else {
+    addWorklogManual({ date, projectId, category: 'self_lines', title: '自己手写行数修正', value })
+  }
 }

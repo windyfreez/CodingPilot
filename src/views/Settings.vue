@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Plus, Delete, FolderOpened, Refresh, Monitor } from '@element-plus/icons-vue'
+import { Plus, Delete, FolderOpened, Refresh, Monitor, DataLine } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useSettingsStore } from '@/store/settings'
 import { useProjectsStore } from '@/store/projects'
-import type { ScanLog } from '@shared/types'
+import type { ScanLog, UsageConfig } from '@shared/types'
 import { IDE_LIST } from '@shared/types'
 
 const settingsStore = useSettingsStore()
@@ -12,6 +12,38 @@ const projectsStore = useProjectsStore()
 
 const scanLogs = ref<ScanLog[]>([])
 const loadingLogs = ref(false)
+
+// ---------- Agent 用量采集配置 ----------
+const usageCfg = ref<UsageConfig | null>(null)
+
+async function loadUsageCfg() {
+  usageCfg.value = await window.api.usage.getConfig()
+}
+
+async function persistUsageCfg(patch?: Partial<UsageConfig>) {
+  if (!usageCfg.value) return
+  const res = await window.api.usage.saveConfig(patch ?? { ...usageCfg.value })
+  if (res.ok && res.data) usageCfg.value = res.data
+}
+
+async function pickUsageDir(field: 'harnessDir' | 'claudeDir' | 'codexDir') {
+  const path = await window.api.dialog.selectDirectory()
+  if (!path || !usageCfg.value) return
+  usageCfg.value[field] = path
+  await persistUsageCfg({ [field]: path })
+}
+
+function addPriceRow() {
+  if (!usageCfg.value) return
+  usageCfg.value.modelPrices.push({ model: 'my-model-*', inputPerMillion: 0, outputPerMillion: 0 })
+  void persistUsageCfg()
+}
+
+async function removePriceRow(i: number) {
+  if (!usageCfg.value) return
+  usageCfg.value.modelPrices.splice(i, 1)
+  await persistUsageCfg()
+}
 
 async function addRoot() {
   const path = await window.api.dialog.selectDirectory()
@@ -57,6 +89,7 @@ function duration(start: number, end: number | null): string {
 onMounted(() => {
   void settingsStore.load()
   void loadLogs()
+  void loadUsageCfg()
 })
 </script>
 
@@ -136,6 +169,84 @@ onMounted(() => {
         </div>
       </el-card>
 
+      <!-- Agent 用量采集配置 -->
+      <el-card v-if="usageCfg" shadow="never" class="xl:col-span-2">
+        <template #header>
+          <div class="card-title flex items-center gap-2">
+            <el-icon><DataLine /></el-icon>
+            <span>🤖 Agent 用量采集（token / 消费 / 工作量归属）</span>
+          </div>
+        </template>
+        <el-form label-position="top" class="grid grid-cols-1 xl:grid-cols-2 gap-x-6">
+          <el-form-item label="自动采集">
+            <div class="flex items-center gap-4">
+              <el-switch
+                v-model="usageCfg.autoSyncEnabled"
+                @change="persistUsageCfg({ autoSyncEnabled: usageCfg.autoSyncEnabled })"
+              />
+              <span class="text-sm text-slate-400">启动后自动解析 Claude Code / Codex / Harness 本地记录</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="采集间隔（分钟）">
+            <el-input-number
+              v-model="usageCfg.autoSyncIntervalMinutes"
+              :min="5"
+              :max="1440"
+              @change="persistUsageCfg({ autoSyncIntervalMinutes: usageCfg.autoSyncIntervalMinutes })"
+            />
+          </el-form-item>
+          <el-form-item label="Claude Code 记录目录（~/.claude）">
+            <div class="flex items-center gap-2 w-full">
+              <el-input v-model="usageCfg.claudeDir" placeholder="留空使用默认 ~/.claude" @blur="persistUsageCfg()" />
+              <el-button :icon="FolderOpened" @click="pickUsageDir('claudeDir')" />
+            </div>
+          </el-form-item>
+          <el-form-item label="Codex CLI 记录目录（~/.codex）">
+            <div class="flex items-center gap-2 w-full">
+              <el-input v-model="usageCfg.codexDir" placeholder="留空使用默认 ~/.codex" @blur="persistUsageCfg()" />
+              <el-button :icon="FolderOpened" @click="pickUsageDir('codexDir')" />
+            </div>
+          </el-form-item>
+          <el-form-item label="DeepSeek Harness 记录目录（~/.dsh）" class="xl:col-span-2">
+            <div class="flex items-center gap-2 w-full">
+              <el-input v-model="usageCfg.harnessDir" placeholder="留空使用默认 ~/.dsh" @blur="persistUsageCfg()" />
+              <el-button :icon="FolderOpened" @click="pickUsageDir('harnessDir')" />
+            </div>
+          </el-form-item>
+        </el-form>
+
+        <div class="card-sub-title">模型单价（每百万 token，美元；用于按 token 估算消费，工具自带 cost 时优先用真实值）</div>
+        <el-table :data="usageCfg.modelPrices" size="small">
+          <el-table-column label="模型（支持 * 通配）" min-width="220">
+            <template #default="{ row }">
+              <el-input v-model="row.model" size="small" @change="persistUsageCfg()" />
+            </template>
+          </el-table-column>
+          <el-table-column label="输入 / 1M" width="120">
+            <template #default="{ row }">
+              <el-input-number v-model="row.inputPerMillion" :min="0" :controls="false" size="small" @change="persistUsageCfg()" />
+            </template>
+          </el-table-column>
+          <el-table-column label="输出 / 1M" width="120">
+            <template #default="{ row }">
+              <el-input-number v-model="row.outputPerMillion" :min="0" :controls="false" size="small" @change="persistUsageCfg()" />
+            </template>
+          </el-table-column>
+          <el-table-column label="缓存读 / 1M" width="120">
+            <template #default="{ row }">
+              <el-input-number v-model="row.cacheReadPerMillion" :min="0" :controls="false" size="small" @change="persistUsageCfg()" />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="70">
+            <template #default="{ $index }">
+              <el-button size="small" type="danger" text :icon="Delete" @click="removePriceRow($index)" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-button size="small" class="mt-3" :icon="Plus" @click="addPriceRow">添加单价行</el-button>
+        <div class="text-xs text-slate-500 mt-2">说明：代码归属统计中 "Agent 写入行数" 来自各工具改动日志；"git 提交增行" 按作者日期聚合；差值为未归因（可在工作量页手动修正自己手写行数）。</div>
+      </el-card>
+
       <!-- 扫描日志 -->
       <el-card shadow="never" class="xl:col-span-2">
         <template #header>
@@ -180,6 +291,11 @@ onMounted(() => {
   font-weight: 600;
   color: #e8f1ff;
   letter-spacing: 0.5px;
+}
+.card-sub-title {
+  font-size: 13px;
+  color: #a9bad6;
+  margin: 6px 0 8px;
 }
 .root-list {
   max-height: 300px;

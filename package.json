@@ -1,7 +1,7 @@
 {
   "name": "project-pilot",
   "version": "0.1.0",
-  "description": "本地项目管理系统 - ProjectPilot: 本地项目指挥中心",
+  "description": "CodingPilot - 本地优先的 AI 开发工作台：项目资产管理、数据统计、AI Agent 用量（token/消费）统计与当日工作量统计（代码归属/开发指标）。",
   "main": "./out/main/main.js",
   "author": "local",
   "license": "MIT",
@@ -19,6 +19,7 @@
   "dependencies": {
     "better-sqlite3": "^12.2.0",
     "fast-glob": "^3.3.3",
+    "fzstd": "^0.1.1",
     "simple-git": "^3.27.0"
   },
   "devDependencies": {

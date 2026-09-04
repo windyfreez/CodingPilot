@@ -65,6 +65,34 @@ const api: Api = {
   ides: {
     list: () => IDE_LIST
   },
+  usage: {
+    getConfig: () => ipcRenderer.invoke('usage:getConfig'),
+    saveConfig: (patch) => ipcRenderer.invoke('usage:saveConfig', patch),
+    syncNow: () => ipcRenderer.invoke('usage:syncNow'),
+    overview: (days) => ipcRenderer.invoke('usage:overview', days ?? 30),
+    sessions: (limit) => ipcRenderer.invoke('usage:sessions', limit ?? 50),
+    onSynced: (cb) => {
+      const listener = (_e: IpcRendererEvent, r: Parameters<typeof cb>[0]): void => cb(r)
+      ipcRenderer.on('usage:synced', listener)
+      return () => {
+        ipcRenderer.removeListener('usage:synced', listener)
+      }
+    }
+  },
+  worklog: {
+    daily: (date) => ipcRenderer.invoke('worklog:daily', date ?? null),
+    syncGitNow: () => ipcRenderer.invoke('worklog:syncGitNow'),
+    addManual: (entry) => ipcRenderer.invoke('worklog:addManual', entry),
+    removeManual: (id) => ipcRenderer.invoke('worklog:removeManual', id),
+    setSelfLines: (date, projectId, value) => ipcRenderer.invoke('worklog:setSelfLines', { date, projectId, value }),
+    onGitSynced: (cb) => {
+      const listener = (): void => cb()
+      ipcRenderer.on('worklog:gitSynced', listener)
+      return () => {
+        ipcRenderer.removeListener('worklog:gitSynced', listener)
+      }
+    }
+  },
   on: (channel, cb) => {
     if (!EVENT_CHANNELS.includes(channel as (typeof EVENT_CHANNELS)[number])) {
       throw new Error(`不允许订阅的通道: ${channel}`)

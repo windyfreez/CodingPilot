@@ -23,6 +23,18 @@ const router = createRouter({
       meta: { title: '项目详情' }
     },
     {
+      path: '/usage',
+      name: 'usage',
+      component: () => import('@/views/Usage.vue'),
+      meta: { title: '用量统计' }
+    },
+    {
+      path: '/workload',
+      name: 'workload',
+      component: () => import('@/views/Workload.vue'),
+      meta: { title: '当日工作量' }
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/Settings.vue'),
@@ -33,7 +45,7 @@ const router = createRouter({
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined
-  document.title = title ? `${title} - 本地项目管理系统` : '本地项目管理系统'
+  document.title = title ? `${title} - CodingPilot` : 'CodingPilot'
 })
 
 export default router

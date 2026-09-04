@@ -1,5 +1,5 @@
-appId: com.projectpilot.app
-productName: ProjectPilot
+appId: com.codingpilot.app
+productName: CodingPilot
 directories:
   output: release
   buildResources: build
@@ -21,7 +21,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  shortcutName: 本地项目管理系统
+  shortcutName: CodingPilot
 portable:
   artifactName: ${productName}-${version}-portable-${arch}.${ext}
 mac:

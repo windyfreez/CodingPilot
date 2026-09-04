@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Monitor, FolderOpened, Setting, Refresh, Loading } from '@element-plus/icons-vue'
+import { Monitor, FolderOpened, Setting, Refresh, Loading, DataLine, Timer } from '@element-plus/icons-vue'
 import { useSettingsStore } from '@/store/settings'
 import { useProjectsStore } from '@/store/projects'
 
@@ -50,7 +50,8 @@ onMounted(() => {
           <el-icon :size="16" color="#00d4ff"><Monitor /></el-icon>
         </div>
         <div>
-          <div class="logo-text">Project Manager</div>
+          <div class="logo-text">CodingPilot</div>
+          <div class="logo-sub">AI DEV WORKSPACE</div>
         </div>
       </div>
       <el-menu
@@ -68,6 +69,14 @@ onMounted(() => {
         <el-menu-item index="/projects">
           <el-icon><FolderOpened /></el-icon>
           <span>项目列表</span>
+        </el-menu-item>
+        <el-menu-item index="/usage">
+          <el-icon><DataLine /></el-icon>
+          <span>用量统计</span>
+        </el-menu-item>
+        <el-menu-item index="/workload">
+          <el-icon><Timer /></el-icon>
+          <span>当日工作量</span>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>

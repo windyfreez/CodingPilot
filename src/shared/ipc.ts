@@ -20,7 +20,13 @@ import type {
   Settings,
   SizeProgress,
   StatsSummary,
-  Tag
+  Tag,
+  UsageConfig,
+  UsageOverview,
+  UsageSessionBrief,
+  UsageSyncResult,
+  WorklogDayData,
+  WorklogManualEntry
 } from './types'
 
 export interface IpcResult<T = unknown> {
@@ -86,6 +92,29 @@ export interface Api {
   }
   ides: {
     list: () => IdeInfo[]
+  }
+  usage: {
+    getConfig: () => Promise<UsageConfig>
+    saveConfig: (patch: Partial<UsageConfig>) => Promise<IpcResult<UsageConfig>>
+    syncNow: () => Promise<IpcResult<UsageSyncResult>>
+    overview: (days?: number) => Promise<IpcResult<UsageOverview>>
+    sessions: (limit?: number) => Promise<IpcResult<UsageSessionBrief[]>>
+    onSynced: (cb: (r: UsageSyncResult) => void) => () => void
+  }
+  worklog: {
+    daily: (date?: string) => Promise<IpcResult<WorklogDayData>>
+    syncGitNow: () => Promise<IpcResult<{ started: boolean }>>
+    addManual: (entry: {
+      date: string
+      projectId?: number | null
+      category: string
+      title?: string
+      value?: number
+      note?: string | null
+    }) => Promise<IpcResult<{ id: number }>>
+    removeManual: (id: number) => Promise<IpcResult<{ removed: boolean }>>
+    setSelfLines: (date: string, projectId: number | null, value: number) => Promise<IpcResult<{ saved: boolean }>>
+    onGitSynced: (cb: () => void) => () => void
   }
   on: (
     channel: 'scan:progress' | 'git:progress' | 'size:progress' | 'service:log' | 'heatmap:ready',

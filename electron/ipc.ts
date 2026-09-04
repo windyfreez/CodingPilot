@@ -2,7 +2,9 @@
  * IPC 通道注册（主进程侧）
  * 所有处理器返回 { ok, data?, error? } 信封，渲染进程统一解包。
  */
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { appendFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import type {
   Project,
   ProjectFilters,
@@ -13,7 +15,8 @@ import type {
   ScanProgress,
   GitSyncProgress,
   SizeProgress,
-  HeatmapPoint
+  HeatmapPoint,
+  UsageConfig
 } from '@shared/types'
 import { IDE_LIST } from '@shared/types'
 import * as db from './db'
@@ -21,6 +24,8 @@ import { scanRoots } from './services/scanner'
 import * as gitSvc from './services/git'
 import * as sysSvc from './services/system'
 import * as statsSvc from './services/stats'
+import * as usageSvc from './services/usage'
+import * as worklogSvc from './services/worklog'
 
 type Handler<T = unknown, R = unknown> = (args: T) => R | Promise<R>
 
@@ -43,6 +48,17 @@ function getWindow(): BrowserWindow | null {
 function send(channel: string, payload: unknown): void {
   const win = getWindow()
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+}
+
+/** 写入 userData/logs/app.log（与 main.ts 同文件） */
+function writeLog(line: string): void {
+  try {
+    const dir = join(app.getPath('userData'), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'app.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    // 静默
+  }
 }
 
 // ---------- 扫描状态 ----------
@@ -387,6 +403,80 @@ export function registerIpc(): void {
       })
     return { started: true }
   }))
+
+  // ---------- Agent 用量（token / 消费） ----------
+  ipcMain.handle('usage:getConfig', () => usageSvc.getUsageConfig())
+  ipcMain.handle('usage:saveConfig', safe((patch: Partial<UsageConfig>) => usageSvc.saveUsageConfig(patch)))
+  ipcMain.handle('usage:syncNow', safe(async () => {
+    const res = await usageSvc.syncNow(undefined, (p) => send('usage:syncProgress', p))
+    send('usage:synced', res)
+    return res
+  }))
+  ipcMain.handle('usage:overview', safe((days = 30) => usageSvc.getOverview(days)))
+  ipcMain.handle('usage:sessions', safe((limit = 50) => usageSvc.querySessions(limit)))
+
+  // ---------- 当日工作量 ----------
+  ipcMain.handle('worklog:daily', safe((date?: string | null) => worklogSvc.getDayData(date ?? usageSvc.localDateStr())))
+  ipcMain.handle('worklog:syncGitNow', safe(() => {
+    void worklogSvc
+      .syncAllWorklogGit((p: GitSyncProgress) => send('worklog:gitProgress', p))
+      .then(() => {
+        send('worklog:gitSynced', {})
+      })
+    return { started: true }
+  }))
+  ipcMain.handle('worklog:addManual', safe((entry: { date: string; projectId?: number | null; category: string; title?: string; value?: number; note?: string | null }) => {
+    const id = db.addWorklogManual(entry)
+    return { id }
+  }))
+  ipcMain.handle('worklog:removeManual', safe((id: number) => {
+    db.deleteWorklogManual(id)
+    return { removed: true }
+  }))
+  ipcMain.handle('worklog:setSelfLines', safe((args: { date: string; projectId: number | null; value: number }) => {
+    db.upsertSelfLines(args.date, args.projectId, args.value)
+    return { saved: true }
+  }))
+
+  startUsageAutoSync()
+}
+
+/** 自动采集：启动后延迟执行一次，随后按配置间隔定时同步（含 git 工作量刷新） */
+let autoSyncTimer: ReturnType<typeof setInterval> | null = null
+function startUsageAutoSync(): void {
+  if (autoSyncTimer) return
+  const firstDelay = setTimeout(() => {
+    void runAutoSync()
+  }, 8_000)
+  autoSyncTimer = setInterval(() => {
+    void runAutoSync()
+  }, Math.max(usageSvc.getUsageConfig().autoSyncIntervalMinutes, 1) * 60_000)
+  // 防止 interval 被 GC
+  void firstDelay
+}
+
+let autoSyncRunning = false
+async function runAutoSync(): Promise<void> {
+  if (autoSyncRunning) return
+  const cfg = usageSvc.getUsageConfig()
+  if (!cfg.autoSyncEnabled) return
+  autoSyncRunning = true
+  writeLog('[auto-sync] start')
+  try {
+    const res = await usageSvc.syncNow(undefined, (p) => send('usage:syncProgress', p))
+    send('usage:synced', res)
+    writeLog(`[auto-sync] usage done sessions=${res.sessions} usage=${res.usageRows} edits=${res.edits} linked=${res.linked}`)
+    // git 工作量同样随自动同步刷新（内部按仓库游标跳过未变化仓库，开销很小）
+    const g = await worklogSvc.syncAllWorklogGit((p: GitSyncProgress) => send('worklog:gitProgress', p))
+    send('worklog:gitSynced', {})
+    writeLog(`[auto-sync] git done ${g.done}/${g.total}`)
+  } catch (e) {
+    const msg = e instanceof Error ? (e.stack ?? e.message) : String(e)
+    writeLog(`[auto-sync] error ${msg}`)
+    console.warn('[auto-sync]', e)
+  } finally {
+    autoSyncRunning = false
+  }
 }
 
 export { loadSettings }
