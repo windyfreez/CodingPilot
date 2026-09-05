@@ -1,10 +1,8 @@
 # CodingPilot
 
-本地优先（Local-First）的 **AI 开发工作台**：既能管理你散落在各盘符的本地代码资产（项目扫描、Git 状态、磁盘画像、Markdown 笔记、一键启停 IDE/服务/终端），也能统计你与 AI 协作的产出——**Agent Token 用量与消费**、**当日工作量与"Agent 写 vs 自己写"的代码行归属**。
+这是一款本地优先的 **AI Coding工作台**：它不仅可以管理你散落在各盘符的本地项目（项目扫描、Git 状态、磁盘画像、Markdown 笔记、一键启停 IDE/服务/终端），也能统计你与 AI 协作的产出——**快速获得Agent Token 用量与消费**、**当日工作量数据统计与"Agent 写 vs 自己写"的代码行归属**。
 
 基于 **Electron + Vue 3 + TypeScript + Vite（electron-vite）** + Element Plus + ECharts + better-sqlite3 构建，支持 Windows / macOS。
-
-> 前身：ProjectPilot（本地项目管理系统）。引入 AI 用量与工作量统计后更名为 CodingPilot。
 
 ---
 
@@ -43,6 +41,17 @@
 ### ⚙️ 设置
 - 扫描根目录 / 默认 IDE / 默认服务命令 / 自动扫描与间隔 / 扫描日志。
 - **Agent 用量采集**：三个工具的记录目录覆盖（默认 `~/.claude`、`~/.codex`、`~/.dsh`）、自动采集开关与间隔、模型单价表维护。
+
+### ✨ 页面展示
+
+<img width="959" height="538" alt="屏幕截图 2026-09-05 133921" src="https://github.com/user-attachments/assets/25f1c250-db65-421a-963e-7500b567e7a4" />
+<img width="959" height="537" alt="屏幕截图 2026-09-05 133911" src="https://github.com/user-attachments/assets/58fe9241-3fcf-48a2-8150-98e5c0ab77b8" />
+<img width="959" height="538" alt="屏幕截图 2026-09-05 133907" src="https://github.com/user-attachments/assets/37aa24bf-3783-4d86-bc93-c1b50500cb41" />
+<img width="959" height="539" alt="屏幕截图 2026-09-05 133901" src="https://github.com/user-attachments/assets/eaa832fe-eb4e-4f99-a3a7-bc98d6f70a8a" />
+<img width="959" height="539" alt="屏幕截图 2026-09-05 133856" src="https://github.com/user-attachments/assets/bb6c927f-3191-4237-b41a-025273f739e5" />
+<img width="959" height="539" alt="屏幕截图 2026-09-05 133925" src="https://github.com/user-attachments/assets/fba8dd11-a9fb-435a-9bee-7af30637b88c" />
+
+
 
 ---
 
